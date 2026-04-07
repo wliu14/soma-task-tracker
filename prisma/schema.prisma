@@ -8,7 +8,21 @@ datasource db {
 }
 
 model Todo {
-  id        Int      @id @default(autoincrement())
-  title     String
-  createdAt DateTime  @default(now())
+  id            Int              @id @default(autoincrement())
+  title         String
+  dueDate       DateTime?
+  imageUrl      String?
+  createdAt     DateTime         @default(now())
+  dependsOn     TodoDependency[]  @relation("DependentTodos")
+  dependedOnBy  TodoDependency[]  @relation("DependencyTodos")
+}
+
+model TodoDependency {
+  id            Int   @id @default(autoincrement())
+  dependentId   Int
+  dependencyId  Int
+  dependent     Todo  @relation("DependentTodos", fields: [dependentId], references: [id], onDelete: Cascade)
+  dependency    Todo  @relation("DependencyTodos", fields: [dependencyId], references: [id], onDelete: Cascade)
+
+  @@unique([dependentId, dependencyId], name: "TodoDependency_dependentId_dependencyId_key")
 }
