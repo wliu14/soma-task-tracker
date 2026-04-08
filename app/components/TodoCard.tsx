@@ -44,8 +44,8 @@ export function TodoCard({
         <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">{taskError}</div>
       )}
       <div className="flex gap-6">
-        {todo.imageUrl && (
-          <div className="relative flex-shrink-0 w-32 h-32 bg-gray-200 rounded-lg overflow-hidden">
+        <div className="relative flex-shrink-0 w-32 h-32 bg-gray-200 rounded-lg overflow-hidden">
+          {todo.imageUrl && (
             <Image
               src={todo.imageUrl}
               alt={todo.title}
@@ -55,33 +55,34 @@ export function TodoCard({
               onLoad={() => onImageLoad(todo.id)}
               onError={() => onImageError(todo.id)}
             />
-            {failedImageIds.has(todo.id) && (
-              <div
-                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 bg-slate-200 px-1 text-center pointer-events-none"
-                role="img"
-                aria-label="Image could not be loaded"
+          )}
+
+          {(!todo.imageUrl || failedImageIds.has(todo.id)) && (
+            <div
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 bg-slate-200 px-1 text-center pointer-events-none"
+              role="img"
+              aria-label={!todo.imageUrl ? 'No image available' : 'Image could not be loaded'}
+            >
+              <svg
+                className="h-9 w-9 shrink-0 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden={true}
               >
-                <svg
-                  className="h-9 w-9 shrink-0 text-slate-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  aria-hidden={true}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-                  />
-                </svg>
-                <span className="text-[10px] font-medium leading-tight text-slate-500">
-                  Couldn&apos;t load image
-                </span>
-              </div>
-            )}
-          </div>
-        )}
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+                />
+              </svg>
+              <span className="text-[10px] font-medium leading-tight text-slate-500">
+                {!todo.imageUrl ? 'No image available' : "Couldn't load image"}
+              </span>
+            </div>
+          )}
+        </div>
 
         <div className="flex-grow">
           <div className="flex justify-between items-start mb-3">

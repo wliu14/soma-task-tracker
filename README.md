@@ -100,9 +100,11 @@ npm run build        # production build + typecheck
 
 - When user clicks on `Add Task`, it triggers **POST /api/todos** where the server makes an API Call to Pexels if key is present
 - The first result is picked and stored as `imageUrl` on the `Todo`
+- If there are issues or the image is loading a template "Couldn't load image" card is placed
 - Gray frame shows while browser fetches the image or only if the request fails
 
 ![Part 2 – Image Preview](./docs/part2-image-preview.png)
+![Part 2 – Image Failure](./docs/part2-image-failure-template.png)
 
 **Primary files:** `app/api/todos/route.ts`, `app/components/TodoCard.tsx`, `next.config.mjs` (remote image host)
 
