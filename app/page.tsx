@@ -25,7 +25,7 @@ export default function Home() {
     setDueDate,
     selectedDeps,
     toggleDependency,
-    loadingImages,
+    failedImageIds,
     editedDueDates,
     setEditedDueDates,
     earliestStartById,
@@ -36,7 +36,8 @@ export default function Home() {
     handleUpdateDueDate,
     toInputDate,
     isOverdue,
-    handleImageLoadComplete,
+    handleImageLoad,
+    handleImageError,
   } = todosState;
 
   return (
@@ -70,7 +71,7 @@ export default function Home() {
                 taskError={taskErrors[todo.id]}
                 earliestStartLabel={earliestStartById.get(todo.id) || '—'}
                 editedDueDates={editedDueDates}
-                loadingImages={loadingImages}
+                failedImageIds={failedImageIds}
                 onEditedDueDateChange={(id, value) =>
                   setEditedDueDates((prev) => ({ ...prev, [id]: value }))
                 }
@@ -78,7 +79,8 @@ export default function Home() {
                 onDelete={handleDeleteTodo}
                 onAddDependency={handleAddDependency}
                 onRemoveDependency={handleRemoveDependency}
-                onImageLoadComplete={handleImageLoadComplete}
+                onImageLoad={handleImageLoad}
+                onImageError={handleImageError}
                 isOverdue={isOverdue}
                 toInputDate={toInputDate}
               />

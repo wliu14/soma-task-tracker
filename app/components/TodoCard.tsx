@@ -9,13 +9,14 @@ export interface TodoCardProps {
   taskError?: string;
   earliestStartLabel: string;
   editedDueDates: Record<number, string>;
-  loadingImages: Set<number>;
+  failedImageIds: Set<number>;
   onEditedDueDateChange: (todoId: number, value: string) => void;
   onSaveDueDate: (todoId: number) => void;
   onDelete: (id: number) => void;
   onAddDependency: (todoId: number, dependencyId: number) => void;
   onRemoveDependency: (todoId: number, dependencyId: number) => void;
-  onImageLoadComplete: (todoId: number) => void;
+  onImageLoad: (todoId: number) => void;
+  onImageError: (todoId: number) => void;
   isOverdue: (dueDate: string | null) => boolean;
   toInputDate: (value: string | null) => string;
 }
@@ -26,13 +27,14 @@ export function TodoCard({
   taskError,
   earliestStartLabel,
   editedDueDates,
-  loadingImages,
+  failedImageIds,
   onEditedDueDateChange,
   onSaveDueDate,
   onDelete,
   onAddDependency,
   onRemoveDependency,
-  onImageLoadComplete,
+  onImageLoad,
+  onImageError,
   isOverdue,
   toInputDate,
 }: TodoCardProps) {
@@ -43,24 +45,40 @@ export function TodoCard({
       )}
       <div className="flex gap-6">
         {todo.imageUrl && (
-          <div
-            className="relative flex-shrink-0 w-32 h-32 bg-gray-200 rounded-lg overflow-hidden"
-            aria-busy={loadingImages.has(todo.id)}
-          >
+          <div className="relative flex-shrink-0 w-32 h-32 bg-gray-200 rounded-lg overflow-hidden">
             <Image
               src={todo.imageUrl}
               alt={todo.title}
               fill
               sizes="128px"
               className="object-cover"
-              onLoadingComplete={() => onImageLoadComplete(todo.id)}
-              onError={() => onImageLoadComplete(todo.id)}
+              onLoad={() => onImageLoad(todo.id)}
+              onError={() => onImageError(todo.id)}
             />
-            {loadingImages.has(todo.id) && (
+            {failedImageIds.has(todo.id) && (
               <div
-                className="absolute inset-0 z-10 bg-slate-300/90 animate-pulse pointer-events-none"
-                aria-hidden={true}
-              />
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 bg-slate-200 px-1 text-center pointer-events-none"
+                role="img"
+                aria-label="Image could not be loaded"
+              >
+                <svg
+                  className="h-9 w-9 shrink-0 text-slate-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden={true}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+                  />
+                </svg>
+                <span className="text-[10px] font-medium leading-tight text-slate-500">
+                  Couldn&apos;t load image
+                </span>
+              </div>
             )}
           </div>
         )}

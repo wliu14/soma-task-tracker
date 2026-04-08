@@ -30,7 +30,8 @@ export function useTodos({
   const [dueDate, setDueDate] = useState('');
   const [selectedDeps, setSelectedDeps] = useState<number[]>([]);
   const [todos, setTodos] = useState<TodoWithDeps[]>([]);
-  const [loadingImages, setLoadingImages] = useState<Set<number>>(new Set());
+  /** Todos whose remote image failed to load — placeholder is shown only for these. */
+  const [failedImageIds, setFailedImageIds] = useState<Set<number>>(new Set());
   const [editedDueDates, setEditedDueDates] = useState<Record<number, string>>({});
 
   const fetchTodos = useCallback(async () => {
@@ -53,8 +54,7 @@ export function useTodos({
 
       const sorted = sortTodosClient(data as TodoWithDeps[]);
       setTodos(sorted);
-      const imageIds = sorted.filter((t) => Boolean(t.imageUrl)).map((t) => t.id);
-      setLoadingImages(new Set(imageIds));
+      setFailedImageIds(new Set());
       clearGlobalError();
     } catch (e) {
       console.error('Failed to fetch todos:', e);
@@ -221,12 +221,17 @@ export function useTodos({
     return new Date(d) < new Date();
   }, []);
 
-  const handleImageLoadComplete = useCallback((todoId: number) => {
-    setLoadingImages((prev) => {
+  const handleImageLoad = useCallback((todoId: number) => {
+    setFailedImageIds((prev) => {
+      if (!prev.has(todoId)) return prev;
       const next = new Set(prev);
       next.delete(todoId);
       return next;
     });
+  }, []);
+
+  const handleImageError = useCallback((todoId: number) => {
+    setFailedImageIds((prev) => new Set(prev).add(todoId));
   }, []);
 
   return {
@@ -237,7 +242,7 @@ export function useTodos({
     setDueDate,
     selectedDeps,
     toggleDependency,
-    loadingImages,
+    failedImageIds,
     editedDueDates,
     setEditedDueDates,
     earliestStartById,
@@ -249,6 +254,7 @@ export function useTodos({
     handleUpdateDueDate,
     toInputDate,
     isOverdue,
-    handleImageLoadComplete,
+    handleImageLoad,
+    handleImageError,
   };
 }
