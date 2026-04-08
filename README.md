@@ -30,11 +30,6 @@ npm run build     # production build + TypeScript check
 ```
 
 ---
-
-## Provenance & auditability case study
-
-Design write-up (investor + security lens) is in `docs/provenance-auditability-system.md`.
-
 ## Task
 
 Modify the code to add support for **due dates**, **image previews**, and **task dependencies**.
@@ -85,10 +80,10 @@ npm run build        # production build + typecheck
 
 ### Part 1 — Due Dates
 
-- **Create:** TaskForm object that requires a title but optionally can include a due date and dependent TaskForm object
-- **Enforce:** A task's cannot be before its dependency’s due date and cannot be after a dependent’s due date when those dates exist
-- **Display:** Due date shown on the card with past dates use red styling and an “(OVERDUE)” label; future dates use green
-- **Edit:** Give user's the ability to edit the due date and add / remove dependencies
+- **Create:** The add-task form requires a title and supports an optional due date.
+- **Enforce:** A task due date cannot be earlier than any dependency due date, and cannot be later than any dependent due date (when those dates exist).
+- **Display:** The due date is shown on each card; overdue dates are red with an “(OVERDUE)” label, and upcoming dates are green.
+- **Edit:** Users can update due dates from each task card.
 
 ![Part 1 – Due Dates and Overdue](docs/part1-due-dates.png)
 
@@ -98,10 +93,12 @@ npm run build        # production build + typecheck
 
 ### Part 2 — Image Previews
 
-- When user clicks on `Add Task`, it triggers **POST /api/todos** where the server makes an API Call to Pexels if key is present
-- The first result is picked and stored as `imageUrl` on the `Todo`
-- If there are issues or the image is loading a template "Couldn't load image" card is placed
-- Gray frame shows while browser fetches the image or only if the request fails
+- On `POST /api/todos`, the server calls Pexels (when `PEXELS_API_KEY` is present) using the task title as the query.
+- The first result is stored as `imageUrl` on the `Todo`.
+- Each task card always shows a consistent image area:
+  - Shows the fetched image when available
+  - Shows **No image available** when no URL exists
+  - Shows **Couldn't load image** when the URL fails to load
 
 ![Part 2 – Image Preview](./docs/part2-image-preview.png)
 ![Part 2 – Image Failure](./docs/part2-image-failure-template.png)
@@ -112,12 +109,12 @@ npm run build        # production build + typecheck
 
 ### Part 3 — Dependencies
 
-- Multiple dependencies can be selected and removed when creating a new task or editing an existing one
-- Dependencies resulting in cycles are prohibitted by performing a BFS on the graph and displaying an error message
-- Enforcement is made on the due date of tasks by ensuring tasks have a later due date after their dependents 
-- Interactive directed graph is present which displays the earliest start date and due date when a node is clicked on
+- Tasks can have multiple dependencies, and dependencies can be added/removed from the UI.
+- Cycle creation is blocked using a BFS reachability check before insertion.
+- Due-date ordering is enforced against both dependencies and dependents.
+- The directed graph is interactive and shows earliest start and due date details on node click.
 
-(See Algorithms for more explanation on how this was done)
+(See **Algorithms** for implementation details.)
 
 ![Part 3 – Dependency Interface](./docs/part3-dependency-interface.png)
 ![Part 3 – Dependency Invalid End Date](./docs/part3-invalid-end-date.png)
@@ -159,6 +156,10 @@ model TodoDependency {
 }
 ```
 
+Dependency direction in this project:
+- If task **B** depends on task **A**, then `dependentId = B` and `dependencyId = A`.
+- In the graph, this is rendered as **A -> B**.
+
 ---
 
 ### API endpoints
@@ -179,46 +180,49 @@ Errors use JSON `{ "error": string }` with 4xx/5xx as appropriate. Request bodie
 
 ### Algorithms
 
-**1) Circular Dependecy Check (Edge Insertion)**  
-When adding edge `dependent -> dependency`, we test whether `dependency` can already reach `dependent` 
+**1) Circular dependency check (edge insertion)**  
+When adding edge `dependent -> dependency`, we test whether `dependency` can already reach `dependent`.
 
-- Build adjacency matrix once with one `findMany` on `TodoDependency`.
+- Build adjacency lists once with one `findMany` on `TodoDependency`.
 - Run BFS over edges (task -> its dependencies).
 - If reachable, reject the insert (it would create a cycle).
 
-**2) Task Order (Kahn's Topological Sort)**  
-We first build a DAG from dependency rows (`dependency -> dependent`) and compute each task's in-degree (how many prerequisites it has).
+**2) Task order**  
+Before we calculate dates, we need an order where prerequisites come first.
 
-- Initialize a queue with all tasks whose in-degree is `0` (no prerequisites).
-- Pop from the queue, append to `topologicalOrder`, and "remove" its outgoing edges.
-- Each removed edge decrements a neighbor's in-degree; when that reaches `0`, enqueue it.
+Example:
+- If `B` depends on `A`, we must process `A` before `B`.
+- If `C` depends on `B`, we process `A -> B -> C`.
 
-Why this matters in our project:
-- This guarantees every task is processed only after all of its dependencies.
-- We use `topologicalOrder` for the forward schedule pass and reverse order for the backward pass.
+Kahn’s topological sort gives us this valid order automatically.
 
-**3) Earliest Start Date**  
+Why this matters:
+- We never compute a task before its dependencies are known.
+- This makes earliest-start calculations correct and stable.
+
+**3) Earliest start date**  
 All schedule values are day offsets from `baseDate` (today at local midnight).
+
+Definitions:
+- **ES (Earliest Start):** the first day a task is allowed to start.
+- **EF (Earliest Finish):** the first day a task can be finished after considering duration and due-date floor.
 
 For each task `v` in topological order:
 - If `v` has no dependencies: `ES(v) = 0`.
 - Else: `ES(v) = max(EF(u))` across all dependencies `u`.
-- Duration defaults to `1` day (`estimatedDurationDays` is optional scheduler input only).
-- Due date is a finish floor: `dueOffset(v) = days(baseDate -> dueDate(v))`, or `0` if no due date.
-- `EF(v) = max(ES(v) + duration(v), dueOffset(v))`.
+- If a task has a due date, it cannot finish before that date (the due date acts as a minimum finish day).
 
-Displayed earliest start date in the UI is `baseDate + ES(v)` days.
+The UI shows earliest start as a real date: `baseDate + ES` days.
 
-**4) Critical Path**  
-Definition in this project:
-- A task is strictly critical if `slack(v) = 0`, where `slack(v) = LF(v) - EF(v)`.
-- `LF/LS` come from a backward pass after project end `L = max(EF)` is known.
+**4) Critical path**  
+In this project, the critical path means: **the chain of tasks that controls the overall finish date**.
 
-How we retrieve the orange path shown in the graph:
-- `slackCriticalNodes`: all zero-slack tasks (strict CPM set).
-- `driverSpine`: start from each task with `EF = L`, then walk backward through the predecessor that set its `ES` (the dependency with max predecessor `EF`).
-- Final highlight set: `criticalPathNodes = slackCriticalNodes ∪ driverSpine`.
+- If a task on this chain is delayed, the final completion date moves later.
+- We first compute **strict critical tasks** using slack (`slack = 0`).
+- To make the graph easier to read, we also include the **driver chain** (the dependency chain that leads to the latest-finishing task).
 
-Why union both sets:
-- Strict CPM can mark only tail tasks as zero-slack when due-date constraints dominate.
-- Adding the driver spine gives a connected, intuitive end-to-end path in the UI while still preserving strict criticality (`slackCriticalNodes`) separately.
+So the orange path in the graph is:
+- strict critical tasks, plus
+- the driver chain,
+
+which gives a clear, connected start-to-finish path for users.
