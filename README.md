@@ -194,14 +194,14 @@ Example:
 - If `B` depends on `A`, we must process `A` before `B`.
 - If `C` depends on `B`, we process `A -> B -> C`.
 
-Kahn’s topological sort gives us this valid order automatically.
+Kahn’s topological sort (a dependency-safe ordering) gives us this valid order automatically.
 
 Why this matters:
 - We never compute a task before its dependencies are known.
 - This makes earliest-start calculations correct and stable.
 
 **3) Earliest start date**  
-All schedule values are day offsets from `baseDate` (today at local midnight).
+All schedule values are day numbers counted from `baseDate` (today at local midnight).
 
 Definitions:
 - **ES (Earliest Start):** the first day a task is allowed to start.
@@ -210,7 +210,7 @@ Definitions:
 For each task `v` in topological order:
 - If `v` has no dependencies: `ES(v) = 0`.
 - Else: `ES(v) = max(EF(u))` across all dependencies `u`.
-- If a task has a due date, it cannot finish before that date (the due date acts as a minimum finish day).
+- If a task has a due date, it cannot finish before that date.
 
 The UI shows earliest start as a real date: `baseDate + ES` days.
 
@@ -218,11 +218,11 @@ The UI shows earliest start as a real date: `baseDate + ES` days.
 In this project, the critical path means: **the chain of tasks that controls the overall finish date**.
 
 - If a task on this chain is delayed, the final completion date moves later.
-- We first compute **strict critical tasks** using slack (`slack = 0`).
-- To make the graph easier to read, we also include the **driver chain** (the dependency chain that leads to the latest-finishing task).
+- We first compute tasks with **no schedule buffer** (`slack = 0`).
+- To make the graph easier to read, we also include the dependency chain that leads to the latest-finishing task.
 
 So the orange path in the graph is:
-- strict critical tasks, plus
-- the driver chain,
+- no-buffer tasks (`slack = 0`), plus
+- the latest-finishing dependency chain,
 
 which gives a clear, connected start-to-finish path for users.
