@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/image', () => ({
-  default: (props: any) => <img alt={props.alt} src={props.src} />,
+  default: (props: { alt?: string; src?: string }) => <img alt={props.alt ?? ''} src={props.src ?? ''} />,
 }));
 
 import Home from '@/app/page';
@@ -32,13 +32,12 @@ describe('Home page key flows', () => {
       .mockImplementationOnce(() => ok({ id: 1 }))
       .mockImplementationOnce(() => ok([]));
 
-    const { container } = render(<Home />);
+    render(<Home />);
 
     fireEvent.change(screen.getByPlaceholderText('Enter task title'), {
       target: { value: 'Buy groceries' },
     });
-    const dateInputs = container.querySelectorAll('input[type="date"]');
-    fireEvent.change(dateInputs[0], {
+    fireEvent.change(screen.getByLabelText('New task due date'), {
       target: { value: '2026-04-20' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Add Task' }));
@@ -73,13 +72,12 @@ describe('Home page key flows', () => {
       .mockImplementationOnce(() => ok({ id: 1, dueDate: '2026-04-18' }))
       .mockImplementationOnce(() => ok(todos));
 
-    const { container } = render(<Home />);
+    render(<Home />);
     await waitFor(() => {
       expect(screen.getAllByRole('button', { name: 'Save due date' }).length).toBeGreaterThan(0);
     });
 
-    const dateInputs = container.querySelectorAll('input[type="date"]');
-    fireEvent.change(dateInputs[1], { target: { value: '2026-04-18' } });
+    fireEvent.change(screen.getByLabelText('Due date for Task A'), { target: { value: '2026-04-18' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save due date' }));
 
     await waitFor(() => {

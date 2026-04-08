@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { jsonError } from '@/lib/api/response';
+import { parseJsonBody, parseOptionalDueDateField, parsePositiveIntParam } from '@/lib/api/validation';
+import {
+  validateDueDateAgainstDependencies,
+  validateDueDateAgainstDependents,
+} from '@/lib/domain/todoRules';
 
 interface Params {
   params: {
@@ -7,33 +13,29 @@ interface Params {
   };
 }
 
-function parseDateOnlyToLocalMidnight(value: unknown): Date | null {
-  if (typeof value !== 'string' || value.trim() === '') return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!m) return null;
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
-  if (!Number.isInteger(y) || !Number.isInteger(mo) || !Number.isInteger(d)) return null;
-  const dt = new Date(y, mo - 1, d);
-  return Number.isNaN(dt.getTime()) ? null : dt;
-}
-
 export async function PATCH(request: Request, { params }: Params) {
-  const id = Number(params.id);
-  if (!Number.isInteger(id) || id <= 0) {
-    return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+  const id = parsePositiveIntParam(params.id);
+  if (id === null) {
+    return jsonError('Invalid ID', 400);
   }
 
-  try {
-    const body = await request.json();
-    const dueDateRaw = (body as any)?.dueDate ?? null;
-    const newDueDate = dueDateRaw ? parseDateOnlyToLocalMidnight(dueDateRaw) : null;
-    if (dueDateRaw && !newDueDate) {
-      return NextResponse.json({ error: 'Invalid due date' }, { status: 400 });
-    }
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) {
+    return jsonError(parsed.error, 400);
+  }
 
-    // Fetch this todo with its dependencies and dependents
+  if (parsed.data === null || typeof parsed.data !== 'object') {
+    return jsonError('Invalid request body', 400);
+  }
+
+  const dueDateRaw = (parsed.data as Record<string, unknown>).dueDate;
+  const dueParsed = parseOptionalDueDateField(dueDateRaw);
+  if (!dueParsed.ok) {
+    return jsonError(dueParsed.error, 400);
+  }
+  const newDueDate = dueParsed.date;
+
+  try {
     const todo = await prisma.todo.findUnique({
       where: { id },
       include: {
@@ -47,48 +49,26 @@ export async function PATCH(request: Request, { params }: Params) {
     });
 
     if (!todo) {
-      return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
+      return jsonError('Todo not found', 404);
     }
 
-    // If setting a due date, enforce ordering with dependencies:
-    // newDueDate must be on or after all dependency due dates.
     if (newDueDate) {
-      const depsWithDue = todo.dependsOn
-        .map(d => d.dependency)
-        .filter(d => d.dueDate !== null);
-      if (depsWithDue.length > 0) {
-        const latestDep = depsWithDue.reduce((latest, current) =>
-          latest.dueDate! > current.dueDate! ? latest : current
-        );
-        if (latestDep.dueDate! > newDueDate) {
-          const latestDueStr = latestDep.dueDate!.toLocaleDateString();
-          return NextResponse.json(
-            {
-              error: `Due date must be on or after all dependency due dates. Latest dependency: "${latestDep.title}" due ${latestDueStr}.`,
-            },
-            { status: 400 }
-          );
-        }
+      const depsWithDue = todo.dependsOn.map((d) => d.dependency);
+      const depError = validateDueDateAgainstDependencies(
+        newDueDate,
+        depsWithDue.map((d) => ({ title: d.title, dueDate: d.dueDate }))
+      );
+      if (depError) {
+        return jsonError(depError, 400);
       }
-    }
 
-    // Also enforce ordering with dependents:
-    // Each dependent's due date (if set) must be on or after this task's due date.
-    if (newDueDate) {
-      const dependentsWithDue = todo.dependedOnBy
-        .map(d => d.dependent)
-        .filter(d => d.dueDate !== null);
-      if (dependentsWithDue.length > 0) {
-        const violating = dependentsWithDue.find(d => d.dueDate! < newDueDate);
-        if (violating) {
-          const vDueStr = violating.dueDate!.toLocaleDateString();
-          return NextResponse.json(
-            {
-              error: `Cannot move this task's due date later than a task that depends on it. "${violating.title}" is due on ${vDueStr}.`,
-            },
-            { status: 400 }
-          );
-        }
+      const dependentsWithDue = todo.dependedOnBy.map((d) => d.dependent);
+      const depByError = validateDueDateAgainstDependents(
+        newDueDate,
+        dependentsWithDue.map((d) => ({ title: d.title, dueDate: d.dueDate }))
+      );
+      if (depByError) {
+        return jsonError(depByError, 400);
       }
     }
 
@@ -102,14 +82,14 @@ export async function PATCH(request: Request, { params }: Params) {
     return NextResponse.json(updated, { status: 200 });
   } catch (error) {
     console.error('Error updating todo:', error);
-    return NextResponse.json({ error: 'Error updating todo' }, { status: 500 });
+    return jsonError('Error updating todo', 500);
   }
 }
 
-export async function DELETE(request: Request, { params }: Params) {
-  const id = parseInt(params.id);
-  if (isNaN(id)) {
-    return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+export async function DELETE(_request: Request, { params }: Params) {
+  const id = parsePositiveIntParam(params.id);
+  if (id === null) {
+    return jsonError('Invalid ID', 400);
   }
 
   try {
@@ -117,7 +97,7 @@ export async function DELETE(request: Request, { params }: Params) {
       where: { id },
     });
     return NextResponse.json({ message: 'Todo deleted' }, { status: 200 });
-  } catch (error) {
-    return NextResponse.json({ error: 'Error deleting todo' }, { status: 500 });
+  } catch {
+    return jsonError('Error deleting todo', 500);
   }
 }

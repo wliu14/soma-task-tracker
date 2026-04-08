@@ -1,5 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { jsonError } from '@/lib/api/response';
+import {
+  parseJsonBody,
+  parsePositiveIntField,
+  parsePositiveIntParam,
+} from '@/lib/api/validation';
+import { validateNewDependencyDueOrder } from '@/lib/domain/todoRules';
 
 interface Params {
   params: {
@@ -7,8 +14,20 @@ interface Params {
   };
 }
 
-// Helper: Check if there's a path from 'from' to 'to' in the dependency graph
-async function hasPath(from: number, to: number): Promise<boolean> {
+function buildDependencyAdjacency(
+  rows: Array<{ dependentId: number; dependencyId: number }>
+): Map<number, number[]> {
+  const adj = new Map<number, number[]>();
+  for (const row of rows) {
+    const list = adj.get(row.dependentId);
+    if (list) list.push(row.dependencyId);
+    else adj.set(row.dependentId, [row.dependencyId]);
+  }
+  return adj;
+}
+
+/** BFS on edges: task → tasks it depends on (`dependencyId`). One DB read builds `adj`. */
+function hasPathInAdjacency(adj: Map<number, number[]>, from: number, to: number): boolean {
   const visited = new Set<number>();
   const queue = [from];
 
@@ -18,23 +37,27 @@ async function hasPath(from: number, to: number): Promise<boolean> {
     if (visited.has(current)) continue;
     visited.add(current);
 
-    const dependencies = await prisma.todoDependency.findMany({
-      where: { dependentId: current },
-      select: { dependencyId: true },
-    });
-
-    for (const dep of dependencies) {
-      queue.push(dep.dependencyId);
+    const next = adj.get(current);
+    if (!next) continue;
+    for (const depId of next) {
+      queue.push(depId);
     }
   }
 
   return false;
 }
 
-export async function GET(request: Request, { params }: Params) {
-  const id = parseInt(params.id);
-  if (isNaN(id)) {
-    return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+async function loadDependencyAdjacency(): Promise<Map<number, number[]>> {
+  const rows = await prisma.todoDependency.findMany({
+    select: { dependentId: true, dependencyId: true },
+  });
+  return buildDependencyAdjacency(rows);
+}
+
+export async function GET(_request: Request, { params }: Params) {
+  const id = parsePositiveIntParam(params.id);
+  if (id === null) {
+    return jsonError('Invalid ID', 400);
   }
 
   try {
@@ -43,61 +66,62 @@ export async function GET(request: Request, { params }: Params) {
       include: { dependency: true },
     });
     return NextResponse.json(dependencies);
-  } catch (error) {
-    return NextResponse.json({ error: 'Error fetching dependencies' }, { status: 500 });
+  } catch {
+    return jsonError('Error fetching dependencies', 500);
   }
 }
 
 export async function POST(request: Request, { params }: Params) {
-  const dependentId = Number(params.id);
-  if (!Number.isInteger(dependentId) || dependentId <= 0) {
-    return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+  const dependentId = parsePositiveIntParam(params.id);
+  if (dependentId === null) {
+    return jsonError('Invalid ID', 400);
+  }
+
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) {
+    return jsonError(parsed.error, 400);
+  }
+
+  const depIdParsed = parsePositiveIntField(parsed.data, 'dependencyId');
+  if (!depIdParsed.ok) {
+    return jsonError(depIdParsed.error, 400);
+  }
+  const dependencyId = depIdParsed.id;
+
+  if (dependentId === dependencyId) {
+    return jsonError('Cannot depend on itself', 400);
   }
 
   try {
-    const body = await request.json();
-    const dependencyIdRaw = (body as any)?.dependencyId;
-    const dependencyId = Number(dependencyIdRaw);
-
-    if (!Number.isInteger(dependencyId) || dependencyId <= 0) {
-      return NextResponse.json({ error: 'Invalid dependency ID' }, { status: 400 });
-    }
-
-    if (dependentId === dependencyId) {
-      return NextResponse.json({ error: 'Cannot depend on itself' }, { status: 400 });
-    }
-
-    // Check for circular dependency
-    const wouldCreateCycle = await hasPath(dependencyId, dependentId);
+    const adj = await loadDependencyAdjacency();
+    const wouldCreateCycle = hasPathInAdjacency(adj, dependencyId, dependentId);
     if (wouldCreateCycle) {
-      return NextResponse.json(
-        { error: 'Adding this dependency would create a circular reference' },
-        { status: 400 }
-      );
+      return jsonError('Adding this dependency would create a circular reference', 400);
     }
 
-    // Enforce due date ordering:
-    // If both tasks have due dates, the dependent's due date must be
-    // on or after the dependency's due date.
     const [dependent, dependency] = await Promise.all([
-      prisma.todo.findUnique({ where: { id: dependentId }, select: { title: true, dueDate: true } }),
-      prisma.todo.findUnique({ where: { id: dependencyId }, select: { title: true, dueDate: true } }),
+      prisma.todo.findUnique({
+        where: { id: dependentId },
+        select: { title: true, dueDate: true },
+      }),
+      prisma.todo.findUnique({
+        where: { id: dependencyId },
+        select: { title: true, dueDate: true },
+      }),
     ]);
 
-    if (dependent && dependency && dependent.dueDate && dependency.dueDate) {
-      if (dependent.dueDate < dependency.dueDate) {
-        const depDue = dependency.dueDate.toLocaleDateString();
-        const depTitle = dependency.title;
-        return NextResponse.json(
-          {
-            error: `Cannot add dependency: "${depTitle}" is due on ${depDue}, which is later than this task's due date.`,
-          },
-          { status: 400 }
-        );
-      }
+    if (!dependent || !dependency) {
+      return jsonError('Todo not found', 404);
     }
 
-    // Check if dependency already exists
+    const orderError = validateNewDependencyDueOrder(
+      { title: dependent.title, dueDate: dependent.dueDate },
+      { title: dependency.title, dueDate: dependency.dueDate }
+    );
+    if (orderError) {
+      return jsonError(orderError, 400);
+    }
+
     const existing = await prisma.todoDependency.findFirst({
       where: {
         dependentId,
@@ -106,10 +130,7 @@ export async function POST(request: Request, { params }: Params) {
     });
 
     if (existing) {
-      return NextResponse.json(
-        { error: 'This dependency already exists' },
-        { status: 400 }
-      );
+      return jsonError('This dependency already exists', 400);
     }
 
     const dep = await prisma.todoDependency.create({
@@ -123,35 +144,41 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json(dep, { status: 201 });
   } catch (error) {
     console.error('Error creating dependency:', error);
-    return NextResponse.json({ error: 'Error creating dependency' }, { status: 500 });
+    return jsonError('Error creating dependency', 500);
   }
 }
 
 export async function DELETE(request: Request, { params }: Params) {
-  const dependentId = parseInt(params.id);
-  if (isNaN(dependentId)) {
-    return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+  const dependentId = parsePositiveIntParam(params.id);
+  if (dependentId === null) {
+    return jsonError('Invalid ID', 400);
   }
 
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) {
+    return jsonError(parsed.error, 400);
+  }
+
+  const depIdParsed = parsePositiveIntField(parsed.data, 'dependencyId');
+  if (!depIdParsed.ok) {
+    return jsonError(depIdParsed.error, 400);
+  }
+  const dependencyId = depIdParsed.id;
+
   try {
-    const { dependencyId } = await request.json();
-
-    if (!dependencyId || isNaN(parseInt(dependencyId))) {
-      return NextResponse.json({ error: 'Invalid dependency ID' }, { status: 400 });
-    }
-
-    await prisma.todoDependency.deleteMany({
+    const result = await prisma.todoDependency.deleteMany({
       where: {
         dependentId,
         dependencyId,
       },
     });
 
+    if (result.count === 0) {
+      return jsonError('Dependency not found', 404);
+    }
+
     return NextResponse.json({ message: 'Dependency removed' }, { status: 200 });
-  } catch (error) {
-    return NextResponse.json(
-      { error: 'Error removing dependency' },
-      { status: 500 }
-    );
+  } catch {
+    return jsonError('Error removing dependency', 500);
   }
 }

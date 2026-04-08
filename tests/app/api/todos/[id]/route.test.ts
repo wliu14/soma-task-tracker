@@ -13,7 +13,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: mockPrisma,
 }));
 
-import { PATCH } from '@/app/api/todos/[id]/route';
+import { DELETE, PATCH } from '@/app/api/todos/[id]/route';
 
 describe('PATCH /api/todos/[id]', () => {
   beforeEach(() => {
@@ -60,5 +60,36 @@ describe('PATCH /api/todos/[id]', () => {
 
     expect(res.status).toBe(200);
     expect(mockPrisma.todo.update).toHaveBeenCalledOnce();
+  });
+
+  it('rejects invalid route id', async () => {
+    const req = new Request('http://localhost/api/todos/bad', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dueDate: '2026-04-19' }),
+    });
+    const res = await PATCH(req, { params: { id: 'bad' } });
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.error).toBe('Invalid ID');
+  });
+
+  it('rejects invalid JSON on PATCH', async () => {
+    const req = new Request('http://localhost/api/todos/1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{',
+    });
+    const res = await PATCH(req, { params: { id: '1' } });
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.error).toBe('Invalid JSON body');
+  });
+
+  it('rejects invalid DELETE id', async () => {
+    const res = await DELETE(new Request('http://localhost'), { params: { id: '0' } });
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.error).toBe('Invalid ID');
   });
 });
