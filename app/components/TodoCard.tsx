@@ -43,17 +43,24 @@ export function TodoCard({
       )}
       <div className="flex gap-6">
         {todo.imageUrl && (
-          <div className="flex-shrink-0 w-32 h-32 bg-gray-200 rounded-lg overflow-hidden">
+          <div
+            className="relative flex-shrink-0 w-32 h-32 bg-gray-200 rounded-lg overflow-hidden"
+            aria-busy={loadingImages.has(todo.id)}
+          >
             <Image
               src={todo.imageUrl}
               alt={todo.title}
-              width={128}
-              height={128}
-              className="w-full h-full object-cover"
+              fill
+              sizes="128px"
+              className="object-cover"
               onLoadingComplete={() => onImageLoadComplete(todo.id)}
+              onError={() => onImageLoadComplete(todo.id)}
             />
             {loadingImages.has(todo.id) && (
-              <div className="w-full h-full bg-gray-300 animate-pulse"></div>
+              <div
+                className="absolute inset-0 z-10 bg-slate-300/90 animate-pulse pointer-events-none"
+                aria-hidden={true}
+              />
             )}
           </div>
         )}

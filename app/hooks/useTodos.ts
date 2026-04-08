@@ -5,11 +5,10 @@ import { computeSchedule } from '@/lib/scheduling';
 import type { TodoWithDeps } from '@/lib/types/todo';
 import { sortTodosClient } from '@/lib/client/sortTodos';
 
-type ApiErrorShape = { error?: string };
-
 function readApiError(data: unknown, fallback: string): string {
-  if (data && typeof data === 'object' && typeof (data as ApiErrorShape).error === 'string') {
-    return (data as ApiErrorShape).error!;
+  if (data && typeof data === 'object') {
+    const err = (data as Record<string, unknown>).error;
+    if (typeof err === 'string') return err;
   }
   return fallback;
 }

@@ -6,45 +6,13 @@ import {
   parsePositiveIntField,
   parsePositiveIntParam,
 } from '@/lib/api/validation';
+import { buildDependencyAdjacency, hasPathInAdjacency } from '@/lib/domain/dependencyAdjacency';
 import { validateNewDependencyDueOrder } from '@/lib/domain/todoRules';
 
 interface Params {
   params: {
     id: string;
   };
-}
-
-function buildDependencyAdjacency(
-  rows: Array<{ dependentId: number; dependencyId: number }>
-): Map<number, number[]> {
-  const adj = new Map<number, number[]>();
-  for (const row of rows) {
-    const list = adj.get(row.dependentId);
-    if (list) list.push(row.dependencyId);
-    else adj.set(row.dependentId, [row.dependencyId]);
-  }
-  return adj;
-}
-
-/** BFS on edges: task → tasks it depends on (`dependencyId`). One DB read builds `adj`. */
-function hasPathInAdjacency(adj: Map<number, number[]>, from: number, to: number): boolean {
-  const visited = new Set<number>();
-  const queue = [from];
-
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    if (current === to) return true;
-    if (visited.has(current)) continue;
-    visited.add(current);
-
-    const next = adj.get(current);
-    if (!next) continue;
-    for (const depId of next) {
-      queue.push(depId);
-    }
-  }
-
-  return false;
 }
 
 async function loadDependencyAdjacency(): Promise<Map<number, number[]>> {
