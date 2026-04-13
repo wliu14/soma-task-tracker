@@ -3,7 +3,7 @@
 This is a technical assessment as part of the interview process for Soma Capital.
 
 > [!IMPORTANT]  
-> You will need a Pexels API key to complete the technical assessment portion of the application. You can sign up for a free API key at https://www.pexels.com/api/
+> You will need a Pexels API key to complete the technical assessment portion of the application. You can sign up for a free API key at [https://www.pexels.com/api/](https://www.pexels.com/api/)
 
 To begin, clone this repository to your local machine.
 
@@ -30,6 +30,7 @@ npm run build     # production build + TypeScript check
 ```
 
 ---
+
 ## Task
 
 Modify the code to add support for **due dates**, **image previews**, and **task dependencies**.
@@ -58,7 +59,6 @@ Implement a task dependency system that allows tasks to depend on other tasks. T
 4. Calculate the earliest possible start date for each task based on its dependencies
 5. Visualize the dependency graph
 
-
 ---
 
 ## Solution
@@ -75,6 +75,12 @@ npm test             # automated tests
 npm run lint         # ESLint
 npm run build        # production build + typecheck
 ```
+
+### Demo walkthrough
+
+Screen recording (no soundtrack): **[Demo-NoAudio.mov](./Demo-NoAudio.mov)**
+
+There is **no audio** on purpose. The clip is a straight walkthrough of the running app so you can see the project as a working concept: creating tasks, due dates and images, dependencies, invalid edges, and the dependency graph. This includes how the schedule and critical-path styling behave in the UI. Open or download the file from the repo root (GitHub shows a download link on the file page).
 
 ---
 
@@ -93,15 +99,17 @@ npm run build        # production build + typecheck
 
 ### Part 2 — Image Previews
 
-- On `POST /api/todos`, the server calls Pexels (when `PEXELS_API_KEY` is present) using the task title as the query.
+- On `POST /api/todos`, the server calls Pexels (when `PEXELS_API_KEY` is present) using the **task title** as the search query (the UI’s primary text field for the task).
 - The first result is stored as `imageUrl` on the `Todo`.
+- **Loading:** Creating a task waits on the server until the Pexels call finishes (or is skipped if there is no key). Each card keeps a fixed-size image area; while the browser loads the remote image, you see that area fill in (gray behind the image until it paints). There is no separate spinner overlay on the card.
 - Each task card always shows a consistent image area:
   - Shows the fetched image when available
   - Shows **No image available** when no URL exists
   - Shows **Couldn't load image** when the URL fails to load
 
-![Part 2 – Image Preview](./docs/part2-image-preview.png)
-![Part 2 – Image Failure](./docs/part2-image-failure-template.png)
+![Part 2 – Image Preview](docs/part2-image-preview.png)
+
+![Part 2 – Image Failure](docs/part2-image-failure-template.png)
 
 **Primary files:** `app/api/todos/route.ts`, `app/components/TodoCard.tsx`, `next.config.mjs` (remote image host)
 
@@ -109,19 +117,22 @@ npm run build        # production build + typecheck
 
 ### Part 3 — Dependencies
 
-- Tasks can have multiple dependencies, and dependencies can be added/removed from the UI.
+- Tasks can have multiple dependencies. You can pick dependencies when **creating** a task (checkboxes) and **add or remove** them later from each card.
 - Cycle creation is blocked using a BFS reachability check before insertion.
 - Due-date ordering is enforced against both dependencies and dependents.
 - The directed graph is interactive and shows earliest start and due date details on node click.
 
 (See **Algorithms** for implementation details.)
 
-![Part 3 – Dependency Interface](./docs/part3-dependency-interface.png)
-![Part 3 – Dependency Invalid End Date](./docs/part3-invalid-end-date.png)
-![Part 3 – Circular Dependency](./docs/part3-circular-dependency.png)
-![Part 3 – Dependency Graph](./docs/part3-dependency-graph.png)
+![Part 3 – Dependency Interface](docs/part3-dependency-interface.png)
 
-**Primary files:** `app/api/todos/[id]/dependencies/route.ts`, `app/components/DependencyGraph.tsx`, `lib/scheduling.ts`
+![Part 3 – Invalid end date](docs/part3-invalid-end-date.png)
+
+![Part 3 – Circular dependency](docs/part3-circular-dependency.png)
+
+![Part 3 – Dependency graph](docs/part3-dependency-graph.png)
+
+**Primary files:** `app/api/todos/[id]/dependencies/route.ts`, `app/components/DependencyGraph.tsx`, `lib/scheduling.ts`, `app/hooks/useTodos.ts` (earliest-start labels on cards)
 
 ---
 
@@ -129,10 +140,12 @@ npm run build        # production build + typecheck
 
 **SQLite** via Prisma (`prisma/schema.prisma`). File DB: `prisma/dev.db` (gitignored).
 
-| Model | Role |
-|--------|------|
-| **Todo** | Task: `title`, optional `dueDate`, optional `imageUrl`, `createdAt`. Relations: `dependsOn` (edges where this todo is the *dependent*), `dependedOnBy` (edges where this todo is the *dependency*). |
-| **TodoDependency** | Directed edge: `dependentId` must wait on `dependencyId`. Unique on `(dependentId, dependencyId)`. Cascade delete when either todo is removed. |
+
+| Model              | Role                                                                                                                                                                                                |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Todo**           | Task: `title`, optional `dueDate`, optional `imageUrl`, `createdAt`. Relations: `dependsOn` (edges where this todo is the *dependent*), `dependedOnBy` (edges where this todo is the *dependency*). |
+| **TodoDependency** | Directed edge: `dependentId` must wait on `dependencyId`. Unique on `(dependentId, dependencyId)`. Cascade delete when either todo is removed.                                                      |
+
 
 ```prisma
 model Todo {
@@ -157,6 +170,7 @@ model TodoDependency {
 ```
 
 Dependency direction in this project:
+
 - If task **B** depends on task **A**, then `dependentId = B` and `dependencyId = A`.
 - In the graph, this is rendered as **A -> B**.
 
@@ -164,15 +178,17 @@ Dependency direction in this project:
 
 ### API endpoints
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/api/todos` | List todos with `dependsOn` / `dependedOnBy` nested |
-| `POST` | `/api/todos` | Create todo; body: `title`, optional `dueDate` (`YYYY-MM-DD`), optional `dependencyIds[]` |
-| `PATCH` | `/api/todos/[id]` | Update todo; body: `dueDate` (`YYYY-MM-DD` or null) |
-| `DELETE` | `/api/todos/[id]` | Delete todo (cascades dependencies) |
-| `GET` | `/api/todos/[id]/dependencies` | List dependency rows for todo `[id]` |
-| `POST` | `/api/todos/[id]/dependencies` | Add dependency; body: `{ "dependencyId": number }` |
+
+| Method   | Path                           | Purpose                                                                                     |
+| -------- | ------------------------------ | ------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/todos`                   | List todos with `dependsOn` / `dependedOnBy` nested                                         |
+| `POST`   | `/api/todos`                   | Create todo; body: `title`, optional `dueDate` (`YYYY-MM-DD`), optional `dependencyIds[]`   |
+| `PATCH`  | `/api/todos/[id]`              | Update todo; body: `dueDate` (`YYYY-MM-DD` or null)                                         |
+| `DELETE` | `/api/todos/[id]`              | Delete todo (cascades dependencies)                                                         |
+| `GET`    | `/api/todos/[id]/dependencies` | List dependency rows for todo `[id]`                                                        |
+| `POST`   | `/api/todos/[id]/dependencies` | Add dependency; body: `{ "dependencyId": number }`                                          |
 | `DELETE` | `/api/todos/[id]/dependencies` | Remove dependency; body: `{ "dependencyId": number }`. **404** if that edge does not exist. |
+
 
 Errors use JSON `{ "error": string }` with 4xx/5xx as appropriate. Request bodies are validated in `lib/api/validation.ts`.
 
@@ -191,12 +207,14 @@ When adding edge `dependent -> dependency`, we test whether `dependency` can alr
 Before we calculate dates, we need an order where prerequisites come first.
 
 Example:
+
 - If `B` depends on `A`, we must process `A` before `B`.
 - If `C` depends on `B`, we process `A -> B -> C`.
 
 Kahn’s topological sort (a dependency-safe ordering) gives us this valid order automatically.
 
 Why this matters:
+
 - We never compute a task before its dependencies are known.
 - This makes earliest-start calculations correct and stable.
 
@@ -204,10 +222,12 @@ Why this matters:
 All schedule values are day numbers counted from `baseDate` (today at local midnight).
 
 Definitions:
+
 - **ES (Earliest Start):** the first day a task is allowed to start.
 - **EF (Earliest Finish):** the first day a task can be finished after considering duration and due-date floor.
 
 For each task `v` in topological order:
+
 - If `v` has no dependencies: `ES(v) = 0`.
 - Else: `ES(v) = max(EF(u))` across all dependencies `u`.
 - If a task has a due date, it cannot finish before that date.
@@ -215,14 +235,8 @@ For each task `v` in topological order:
 The UI shows earliest start as a real date: `baseDate + ES` days.
 
 **4) Critical path**  
-In this project, the critical path means: **the chain of tasks that controls the overall finish date**.
+After earliest times are known, we run a **backward pass** from the project’s latest finish: for each task we compute how late it could start or finish without pushing the **overall** end date. The gap between “earliest” and “latest” is **slack**. Tasks with **slack = 0** are **critical**: delaying them delays the whole schedule.
 
-- If a task on this chain is delayed, the final completion date moves later.
-- We first compute tasks with **no schedule buffer** (`slack = 0`).
-- To make the graph easier to read, we also include the dependency chain that leads to the latest-finishing task.
+In the UI, **orange** highlights those zero-slack tasks **and** adds a **driver chain** (orange arrows along key dependencies) so the path toward the latest-finishing work is easy to follow—not only isolated slack-zero nodes. See `slackCriticalNodes` vs `criticalPathNodes` in `lib/scheduling.ts`.
 
-So the orange path in the graph is:
-- no-buffer tasks (`slack = 0`), plus
-- the latest-finishing dependency chain,
-
-which gives a clear, connected start-to-finish path for users.
+**Note:** Each task is modeled as **one day** of work and due dates still act as a finish “floor” as described above.
